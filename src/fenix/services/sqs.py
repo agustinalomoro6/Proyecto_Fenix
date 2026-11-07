@@ -12,7 +12,6 @@ def ensure_queues(prefix: str) -> tuple[str, str]:
         Tupla (work_url, dlq_url), tomada de las respuestas de Boto3.
     Raises:
         ClientError: Si SQS rechaza una operación; la CLI lo registra.
-        
     Side Effects:
         Crea dos colas y actualiza RedrivePolicy en la cola principal.
     Notes:
@@ -140,8 +139,14 @@ def retry_later(url: str, message: dict) -> int:
     Side Effects:
         Cambia la visibilidad; RedrivePolicy sigue controlando la DLQ.
     """
-    # TODO I2-B: leer int(message["Attributes"]["ApproximateReceiveCount"]).
-    # Calcular min(30, 2 ** count) y llamar change_message_visibility.
-    # Pasar el ReceiptHandle actual; retornar segundos para registrarlos.
-    # Nunca send_message aquí: una copia reiniciaría la cuenta de recepciones.
-    raise NotImplementedError("I2-B: programar backoff con visibilidad")
+    count = int(message["Attributes"]["ApproximateReceiveCount"])
+    seconds = min(30, 2 ** count)
+
+    client("sqs").change_message_visibility(
+        QueueUrl=url,
+        ReceiptHandle=message["ReceiptHandle"],
+        VisibilityTimeout=seconds,
+    )
+
+    return seconds
+
