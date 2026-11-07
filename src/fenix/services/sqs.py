@@ -12,7 +12,7 @@ def ensure_queues(prefix: str) -> tuple[str, str]:
         Tupla (work_url, dlq_url), tomada de las respuestas de Boto3.
     Raises:
         ClientError: Si SQS rechaza una operación; la CLI lo registra.
-        NotImplementedError: Mientras falte TODO I2-A.
+        
     Side Effects:
         Crea dos colas y actualiza RedrivePolicy en la cola principal.
     Notes:
@@ -23,11 +23,31 @@ def ensure_queues(prefix: str) -> tuple[str, str]:
         "MessageRetentionPeriod": "1209600"})["QueueUrl"]  # Retiene 14 días.
     arn = sqs.get_queue_attributes(QueueUrl=dead,
         AttributeNames=["QueueArn"])["Attributes"]["QueueArn"]  # No inventa ARN.
-    # TODO I2-A: crear {prefix}-events con VisibilityTimeout="45" y retención "345600".
-    # Crear RedrivePolicy con json.dumps, deadLetterTargetArn=arn y maxReceiveCount="3".
-    # Usar set_queue_attributes para asegurar la política aunque la cola exista.
-    # Retornar las URLs devueltas por SQS; no construirlas con strings.
-    raise NotImplementedError("I2-A: completar cola principal y RedrivePolicy")
+
+    queue_name = f"{prefix}-events"
+    attributes = {
+        "VisibilityTimeout": "45",
+        "MessageRetentionPeriod": "345600",
+    }
+
+    try:
+        work_url = sqs.get_queue_url(QueueName=queue_name)["QueueUrl"]
+    except sqs.exceptions.QueueDoesNotExist:
+        work_url = sqs.create_queue(
+            QueueName=queue_name,
+            Attributes=attributes,
+        )["QueueUrl"]
+
+    redrive_policy = json.dumps({
+        "deadLetterTargetArn": arn,
+        "maxReceiveCount": "3",
+    })
+    sqs.set_queue_attributes(
+        QueueUrl=work_url,
+        Attributes={**attributes, "RedrivePolicy": redrive_policy},
+    )
+
+    return work_url, dead
 
 
 def queue_url(prefix: str) -> str:
