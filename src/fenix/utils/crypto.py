@@ -1,6 +1,7 @@
 """Firma de apoyo y verificación a completar por el integrante 3."""
 import hashlib  # Selecciona SHA-256 para autenticar el contenido.
 import hmac  # Usa una comparación segura para las firmas.
+import re  # Comprueba que v1 sea exactamente 64 caracteres hexadecimales.
 import time  # Comprueba la ventana temporal.
 from fenix.utils.errors import ValidationError  # Rechazo de autenticación público.
 
@@ -35,14 +36,37 @@ def verify(secret: str, header: str, body: bytes, now: int | None = None) -> Non
         None si las comprobaciones son satisfactorias.
     Raises:
         ValidationError: Formato inválido, firma incorrecta o diferencia mayor a 300 s.
-        NotImplementedError: Mientras no se complete TODO I3-A.
     Notes:
         La ventana de tiempo mitiga replay antiguo. No impide repetir un evento
         válido dentro de la ventana; event_id e idempotencia cubren ese caso.
+        Los mensajes de error no incluyen la cabecera, la firma ni el secreto.
     """
-    # TODO I3-A: separar por comas; exigir exactamente t y v1 una sola vez.
-    # Rechazar timestamp no entero y v1 que no tenga 64 caracteres hexadecimales.
-    # Usar abs((int(time.time()) if now is None else now) - timestamp) <= 300.
-    # Calcular signature y comparar con hmac.compare_digest; no usar ==.
-    # Convertir fallos de parseo en ValidationError sin mostrar header ni secreto.
-    raise NotImplementedError("I3-A: verificar HMAC y fecha")
+    if not isinstance(header, str) or not isinstance(body, bytes):  # Tipos del contrato.
+        raise ValidationError("Cabecera de firma inválida")
+    parts = header.split(",")  # Debe haber exactamente dos pares: t y v1.
+    if len(parts) != 2:
+        raise ValidationError("Cabecera de firma inválida")
+    fields = {}
+    for part in parts:  # Se arma el diccionario rechazando pares rotos o repetidos.
+        key, separator, value = part.partition("=")
+        if not separator or key in fields:  # Sin "=" o clave duplicada: ambiguo.
+            raise ValidationError("Cabecera de firma inválida")
+        fields[key] = value
+    if set(fields) != {"t", "v1"}:  # Ni claves de menos ni claves desconocidas.
+        raise ValidationError("Cabecera de firma inválida")
+    raw_timestamp, received = fields["t"], fields["v1"]
+    # isascii evita dígitos de otros alfabetos; isdigit descarta signos, puntos y espacios.
+    if not (raw_timestamp.isascii() and raw_timestamp.isdigit()):
+        raise ValidationError("Cabecera de firma inválida")
+    try:  # Conversión explícita: cualquier fallo se traduce al error público.
+        timestamp = int(raw_timestamp)
+    except ValueError as error:
+        raise ValidationError("Cabecera de firma inválida") from error
+    if re.fullmatch(r"[0-9a-f]{64}", received) is None:  # SHA-256 en hexadecimal minúscula.
+        raise ValidationError("Cabecera de firma inválida")
+    current = int(time.time()) if now is None else now  # Reloj inyectable en pruebas.
+    if abs(current - timestamp) > 300:  # Ventana de 5 minutos, pasado y futuro.
+        raise ValidationError("Fecha fuera de la ventana permitida")
+    expected = signature(secret, timestamp, body)  # Firma esperada sobre los bytes crudos.
+    if not hmac.compare_digest(expected, received):  # Tiempo constante: nunca "==".
+        raise ValidationError("Firma inválida")

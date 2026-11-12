@@ -21,8 +21,8 @@ async def webhook(request: Request) -> dict:
     Returns:
         JSON con status=accepted, event_id y message_id de SQS.
     Raises:
-        HTTPException: 401 firma; 400 JSON; 413 tamaño; 422 contrato; 503 SQS.
-        NotImplementedError: Mientras no se complete TODO I3-B.
+        HTTPException: 401 firma; 400 JSON; 413 tamaño; 422 contrato; 500 sin clave;
+            503 SQS.
     Side Effects:
         Publica en SQS; no repara recursos ni llama a Telegram/Slack aquí.
     Notes:
@@ -32,12 +32,26 @@ async def webhook(request: Request) -> dict:
     raw = await request.body()  # Se conservan los bytes originales.
     if len(raw) > 16384:  # Mantiene acotados los ejemplos didácticos.
         raise HTTPException(413, "Cuerpo demasiado grande")  # No encola.
-    # TODO I3-B: verify(os.environ["WEBHOOK_SECRET"], cabecera, raw).
-    # Capturar ValidationError de la firma como HTTPException(401, mensaje genérico).
-    # Luego json.loads(raw); JSONDecodeError o UnicodeDecodeError -> 400.
-    # Validar contra load("data/inventory.json"); ValidationError de esquema -> 422.
-    # Usar await run_in_threadpool para load y llamadas Boto3 bloqueantes.
-    # Obtener queue_url(os.environ["QUEUE_PREFIX"]) y llamar publish.
-    # ClientError/BotoCoreError -> 503, sin prometer aceptación ni mostrar secretos.
-    # Retornar accepted/event_id/message_id únicamente después de send_message exitoso.
-    raise NotImplementedError("I3-B: completar receptor HTTP")
+    secret = os.environ.get("WEBHOOK_SECRET", "")
+    if len(secret) < 16:  # Es un error del servidor, no del cliente: no es un 401.
+        raise HTTPException(500, "Receptor sin clave configurada")
+    try:  # Primero se autentica: nada se interpreta ni se encola sin firma válida.
+        verify(secret, request.headers.get("X-Webhook-Signature", ""), raw)
+    except ValidationError as error:  # Firma, fecha o formato: siempre el mismo mensaje.
+        raise HTTPException(401, "Firma o fecha inválida") from error
+    try:  # Solo ahora se decodifica: la firma ya cubrió los bytes originales.
+        event = json.loads(raw)
+    except (json.JSONDecodeError, UnicodeDecodeError) as error:
+        raise HTTPException(400, "El cuerpo no es JSON válido") from error
+    inventory = await run_in_threadpool(load, "data/inventory.json")  # Lectura de disco.
+    try:  # Esquema cerrado y recurso autorizado; los mensajes de error son públicos.
+        validated = validate(event, inventory)
+    except ValidationError as error:
+        raise HTTPException(422, str(error)) from error
+    try:  # Las llamadas a Boto3 son bloqueantes: se ejecutan fuera del event loop.
+        url = await run_in_threadpool(queue_url, os.environ["QUEUE_PREFIX"])
+        message_id = await run_in_threadpool(publish, url, validated)
+    except (ClientError, BotoCoreError) as error:  # No se promete aceptación sin SQS.
+        raise HTTPException(503, "Cola no disponible; reintentar más tarde") from error
+    # Solo se llega aquí si send_message tuvo éxito: recién ahora se acepta.
+    return {"status": "accepted", "event_id": validated["event_id"], "message_id": message_id}
