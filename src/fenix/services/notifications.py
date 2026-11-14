@@ -2,8 +2,8 @@
 import os  # Recupera credenciales fuera del repositorio.
 import requests  # Aplica timeout explícito a cada llamada HTTP.
 from fenix.utils.errors import PermanentError, RetryableError
-
-
+ 
+ 
 def _post(url: str, payload: dict) -> requests.Response:
     """Hace el POST con timeout y sin dejar rastros de la URL en los errores.
  
