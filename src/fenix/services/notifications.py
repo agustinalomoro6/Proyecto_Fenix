@@ -109,4 +109,3 @@ def notify(text: str) -> None:
             raise PermanentError("Slack no confirmó el envío")
     else:
         raise PermanentError("NOTIFY_PROVIDER no es válido")
-
