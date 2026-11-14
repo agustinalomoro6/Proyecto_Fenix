@@ -1,8 +1,8 @@
 """Pruebas de I2-A e I2-B con SQS emulado en memoria mediante Moto."""
 
 import json
+import time
 from unittest.mock import Mock, patch
-
 import boto3
 import pytest
 from botocore.exceptions import ClientError
@@ -127,3 +127,36 @@ def test_retry_later_propagates_transport_error(sqs_client):
             sqs.retry_later(work_url, message)
 
     assert captured.value is error
+
+def test_failed_message_moves_to_dlq(sqs_client):
+    """Un mensaje corrupto llega a la DLQ al agotar sus recepciones."""
+    work_url, dlq_url = sqs.ensure_queues("fenix-prueba-dlq")
+
+    body = "{json-invalido"
+    message_id = sqs_client.send_message(
+        QueueUrl=work_url,
+        MessageBody=body,
+    )["MessageId"]
+
+    for count, expected_delay in enumerate((2, 4, 8), start=1):
+        messages = sqs.receive(work_url)
+        assert len(messages) == 1
+        message = messages[0]
+
+        assert message["MessageId"] == message_id
+        assert message["Body"] == body
+        assert int(message["Attributes"]["ApproximateReceiveCount"]) == count
+
+        with pytest.raises(json.JSONDecodeError):
+            json.loads(message["Body"])
+
+        seconds = sqs.retry_later(work_url, message)
+        assert seconds == expected_delay
+        time.sleep(seconds + 0.2)
+
+    assert sqs.receive(work_url) == []
+
+    failed_messages = sqs.receive(dlq_url)
+    assert len(failed_messages) == 1
+    assert failed_messages[0]["MessageId"] == message_id
+    assert failed_messages[0]["Body"] == body
