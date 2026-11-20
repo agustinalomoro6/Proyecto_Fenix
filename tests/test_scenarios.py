@@ -1,22 +1,52 @@
 ﻿"""Gu├¡a ejecutable del integrante 6; sustituir cada pendiente por aserciones reales."""
 import pytest  # Mantiene visibles los casos sin implementar.
 
-@pytest.mark.pendiente
-def test_duplicate_is_idempotent():
-    """Comprueba que repetir un evento no repite recursos ni acciones completadas.
+def test_duplicate_is_idempotent(tmp_path, monkeypatch):
+    """Comprueba que repetir un evento no repite reparaciones ni avisos."""
+    from fenix.services import remediation
+    from fenix.utils.state import load, save
 
-    Returns:
-        None cuando dos ejecuciones conservan el estado final esperado.
-    Raises:
-        NotImplementedError: Hasta que I6 implemente la preparaci├│n y aserciones.
-    Notes:
-        Usar un cliente falso con contador de llamadas; reinicializar el handler
-        leyendo el mismo ledger para que el ensayo represente un reinicio.
-    """
-    # TODO I6-B: preparar inventario/manifiesto v├ílido en tmp_path y evento fijo.
-    # Ejecutar handler dos veces; verificar IDs y una sola acci├│n efectiva.
-    # Guardar/releer el estado antes de la segunda ejecuci├│n; no usar un set en memoria.
-    raise NotImplementedError("I6-B: prueba durable de duplicados")
+    monkeypatch.chdir(tmp_path)
+
+    inventory = {
+        "node-01": {"type": "ec2", "id": "i-123"}
+    }
+    save(remediation.INVENTORY_PATH, inventory)
+
+    repairs = []
+    notices = []
+
+    def fake_repair(resource, event_type):
+        repairs.append((resource["id"], event_type))
+        return "repaired"
+
+    monkeypatch.setattr(remediation, "repair", fake_repair)
+    monkeypatch.setattr(remediation, "notify", notices.append)
+
+    event = {
+        "schema_version": 1,
+        "event_id": "evt-node-001",
+        "event_type": "instance.stopped",
+        "resource_id": "node-01",
+        "occurred_at": "2026-10-22T18:00:00Z",
+        "simulate_failures": 0,
+    }
+
+    remediation.handle(event)
+
+    first_ledger = load(remediation.LEDGER_PATH)
+    assert first_ledger["evt-node-001"]["notified"]
+
+    # Segunda ejecución: el estado se vuelve a leer desde el disco.
+    remediation.handle(event)
+
+    final_ledger = load(remediation.LEDGER_PATH)
+
+    assert len(repairs) == 1
+    assert len(notices) == 1
+    assert final_ledger["evt-node-001"]["attempts"] == 1
+    assert final_ledger["evt-node-001"]["repair_done"]
+    assert final_ledger["evt-node-001"]["notified"]
 
 @pytest.mark.pendiente
 def test_ack_is_after_success(monkeypatch):
