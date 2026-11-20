@@ -2,12 +2,10 @@
 from fenix.utils.errors import ValidationError
 from fenix.utils.validation import identifier, utc_text
 
-# Campos exactos del evento: no se aceptan faltantes ni sobrantes.
+
 FIELDS = {"schema_version", "event_id", "event_type", "resource_id",
           "occurred_at", "simulate_failures"}
 
-# Cada tipo de evento solo puede apuntar a un tipo de recurso del inventario.
-# Según la consigna, I2-C debe guardar "type": "ec2" (node-01) y "s3" (bucket-01).
 EVENT_TYPES = {"instance.stopped": "ec2", "bucket.tags_missing": "s3"}
 
 
@@ -28,7 +26,7 @@ def validate(event: dict, inventory: dict) -> dict:
         La asociación event_id -> contenido (conflicto de reutilización) no se
         guarda aquí: validate es pura y no persiste nada; la hace handle (I5-B).
     """
-    if not isinstance(event, dict):  # El cuerpo JSON podría ser lista, número o texto.
+    if not isinstance(event, dict):  #  JSON 
         raise ValidationError("El evento debe ser un objeto JSON")
         
     if set(event) != FIELDS:  
