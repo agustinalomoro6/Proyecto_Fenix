@@ -1,7 +1,6 @@
 """Excepciones compartidas. Integrante 1 revisa cuándo usar cada tipo."""
 
 class ProjectError(Exception):
-    """Error controlado del TP; base para informar y cerrar con código 1.
 
     Args:
         message: Descripción pública, sin tokens ni URLs privadas.
