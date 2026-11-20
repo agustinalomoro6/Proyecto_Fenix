@@ -1,4 +1,4 @@
-"""Pruebas de handle (I5-B): registro durable, idempotencia y orden de las etapas."""
+﻿"""Pruebas de handle (I5-B): registro durable, idempotencia y orden de las etapas."""
 import json
 import pytest
 from fenix.services import remediation
@@ -12,7 +12,7 @@ INVENTORY = {
 
 
 def make_event(**changes) -> dict:
-    """Devuelve un evento válido de instancia, con los cambios indicados."""
+    """Devuelve un evento v├ílido de instancia, con los cambios indicados."""
     event = {"schema_version": 1, "event_id": "evt-node-001",
              "event_type": "instance.stopped", "resource_id": "node-01",
              "occurred_at": "2026-10-22T18:00:00Z", "simulate_failures": 0}
@@ -51,13 +51,13 @@ def spy(tmp_path, monkeypatch):
 
 
 def ledger() -> dict:
-    """Relee el ledger desde el disco: así se prueba que el estado es durable."""
+    """Relee el ledger desde el disco: as├¡ se prueba que el estado es durable."""
     return load("data/events.json")
 
 
 @pytest.mark.pendiente
 def test_first_delivery_repairs_notifies_and_records(spy):
-    """Primera entrega: una reparación, un aviso y el ledger completo en disco."""
+    """Primera entrega: una reparaci├│n, un aviso y el ledger completo en disco."""
     remediation.handle(make_event())
     assert spy.repairs == [("i-123", "instance.stopped")] and len(spy.notices) == 1
     entry = ledger()["evt-node-001"]
@@ -67,7 +67,7 @@ def test_first_delivery_repairs_notifies_and_records(spy):
 
 @pytest.mark.pendiente
 def test_duplicate_delivery_has_no_repeated_effects(spy):
-    """El mismo evento dos veces: una sola reparación y un solo aviso."""
+    """El mismo evento dos veces: una sola reparaci├│n y un solo aviso."""
     remediation.handle(make_event())
     before = ledger()
     remediation.handle(make_event())
@@ -100,7 +100,7 @@ def test_simulated_failures_survive_restarts_and_touch_nothing(spy):
 
 @pytest.mark.pendiente
 def test_repair_failure_is_retried_without_notifying(spy):
-    """Si repair falla no se avisa y la reparación se reintenta en la siguiente entrega."""
+    """Si repair falla no se avisa y la reparaci├│n se reintenta en la siguiente entrega."""
     spy.repair_error = RetryableError("falla pasajera")
     with pytest.raises(RetryableError):
         remediation.handle(make_event())
@@ -114,8 +114,8 @@ def test_repair_failure_is_retried_without_notifying(spy):
 
 @pytest.mark.pendiente
 def test_notify_failure_does_not_repeat_the_repair(spy):
-    """Si falla el aviso, la reparación ya quedó registrada y no se repite."""
-    spy.notify_error = RetryableError("proveedor caído")
+    """Si falla el aviso, la reparaci├│n ya qued├│ registrada y no se repite."""
+    spy.notify_error = RetryableError("proveedor ca├¡do")
     with pytest.raises(RetryableError):
         remediation.handle(make_event())
     entry = ledger()["evt-node-001"]
@@ -131,7 +131,7 @@ def test_notify_failure_does_not_repeat_the_repair(spy):
     {**make_event(), "extra": 1}, make_event(event_type="instance.deleted"),
     make_event(resource_id="no-existe"), make_event(resource_id="bucket-01"), [], "texto"])
 def test_invalid_event_is_rejected_before_touching_the_ledger(spy, event):
-    """Un evento inyectado y no válido se rechaza antes de escribir nada."""
+    """Un evento inyectado y no v├ílido se rechaza antes de escribir nada."""
     with pytest.raises(ValidationError):
         remediation.handle(event)
     assert ledger() == {} and spy.repairs == [] and spy.notices == []
@@ -139,7 +139,7 @@ def test_invalid_event_is_rejected_before_touching_the_ledger(spy, event):
 
 @pytest.mark.pendiente
 def test_other_events_in_the_ledger_are_preserved(spy):
-    """Procesar un evento nuevo no pisa los registros de los demás."""
+    """Procesar un evento nuevo no pisa los registros de los dem├ís."""
     remediation.handle(make_event(event_id="evt-uno-001"))
     remediation.handle(make_event(event_id="evt-dos-002",
                                   event_type="bucket.tags_missing", resource_id="bucket-01"))
@@ -150,7 +150,7 @@ def test_other_events_in_the_ledger_are_preserved(spy):
 
 @pytest.mark.pendiente
 def test_corrupt_ledger_stops_instead_of_being_overwritten(spy, tmp_path):
-    """Un ledger corrupto detiene la operación: nunca se asume vacío ni se sobrescribe."""
+    """Un ledger corrupto detiene la operaci├│n: nunca se asume vac├¡o ni se sobrescribe."""
     (tmp_path / "data" / "events.json").write_text("{corrupto", encoding="utf-8")
     with pytest.raises(json.JSONDecodeError):
         remediation.handle(make_event())

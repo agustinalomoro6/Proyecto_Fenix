@@ -4,8 +4,8 @@ from fenix.utils.state import load, save
 from fenix.utils.validation import identifier
 from botocore.exceptions import ClientError
 from fenix.services.cloud_support import aws_tags, create_group, create_instance, mock_inputs
-from fenix.utils.errors import PermanentError
-
+import time
+from fenix.utils.errors import PermanentError, RetryableError, ValidationError
 def _bucket_tags(s3, bucket_name: str) -> dict[str, str] | None:
     try:
         response = s3.get_bucket_tagging(Bucket=bucket_name)
@@ -209,22 +209,88 @@ def setup_demo(group: str) -> dict:
     return inventory
 
 
-
 def inject_fault(alias: str) -> None:
-    """Detiene el nodo o elimina una etiqueta del bucket de laboratorio.
+    """Inyecta y verifica un fallo controlado en un recurso del laboratorio."""
 
-    Args:
-        alias: node-01 o bucket-01 presente en inventory.json.
-    Returns:
-        None cuando el fallo simulado se verifica mediante el SDK.
-    Raises:
-        ValidationError: Si el alias no pertenece al inventario.
-        NotImplementedError: Mientras falte TODO I6-A.
-    Side Effects:
-        Modifica únicamente el recurso de prueba de ese grupo.
-    """
-    # TODO I6-A: resolver el alias en inventario; jamás recibir InstanceId libre.
-    # node-01: stop_instances y comprobar stopped, con consultas limitadas.
-    # bucket-01: quitar Owner conservando el resto de etiquetas.
-    # Esta función fabrica el problema; no debe enviar el evento automáticamente.
-    raise NotImplementedError("I6-A: inyectar y comprobar fallo")
+    kinds = {
+        "node-01": "ec2",
+        "bucket-01": "s3",
+    }
+
+    if alias not in kinds:
+        raise ValidationError(
+            "El alias no pertenece al inventario autorizado"
+        )
+
+    inventory = load("data/inventory.json")
+
+    if not isinstance(inventory, dict):
+        raise ValidationError("El inventario no es válido")
+
+    record = inventory.get(alias)
+
+    if (
+        not isinstance(record, dict)
+        or record.get("type") != kinds[alias]
+        or not isinstance(record.get("id"), str)
+        or not record["id"].strip()
+    ):
+        raise ValidationError(
+            "El recurso no pertenece al inventario autorizado"
+        )
+
+    resource_id = record["id"]
+
+    if alias == "node-01":
+        ec2 = client("ec2")
+        ec2.stop_instances(InstanceIds=[resource_id])
+
+        for _ in range(10):
+            response = ec2.describe_instances(
+                InstanceIds=[resource_id]
+            )
+            reservations = response.get("Reservations", [])
+            instances = [
+                instance
+                for reservation in reservations
+                for instance in reservation.get("Instances", [])
+            ]
+
+            if (
+                instances
+                and instances[0]["State"]["Name"] == "stopped"
+            ):
+                return
+
+            time.sleep(1)
+
+        raise RetryableError(
+            "No se observó la instancia detenida dentro del tiempo permitido"
+        )
+
+    s3 = client("s3")
+    tags = _bucket_tags(s3, resource_id)
+
+    if tags is None:
+        raise PermanentError("El bucket del inventario no existe")
+
+    remaining_tags = {
+        key: value for key, value in tags.items()
+        if key != "Owner"
+    }
+
+    if remaining_tags != tags:
+        if remaining_tags:
+            s3.put_bucket_tagging(
+                Bucket=resource_id,
+                Tagging={"TagSet": aws_tags(remaining_tags)},
+            )
+        else:
+            s3.delete_bucket_tagging(Bucket=resource_id)
+
+    verified_tags = _bucket_tags(s3, resource_id)
+
+    if verified_tags != remaining_tags:
+        raise RetryableError(
+            "No se pudo comprobar la eliminación de la etiqueta Owner"
+        )
