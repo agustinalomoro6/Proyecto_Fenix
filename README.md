@@ -255,3 +255,7 @@ Además, permite aplicar conocimientos de programación, automatización, integr
 
 **Repositorio oficial:**  
 https://github.com/agustinalomoro6/Proyecto_Fenix
+
+**Video de Defensa:**
+https://drive.google.com/drive/folders/1TuFwbKGx6Yn0PHrS5HUVPgX6h0dVhbsH?usp=drive_link
+
