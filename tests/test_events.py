@@ -1,4 +1,6 @@
-"""Pruebas para events."""
+"""Pruebas del contrato de eventos (events.validate); integrante 1."""
+import copy
+
 import pytest
 
 from fenix.services.events import validate
@@ -19,6 +21,7 @@ EVENTO = {
 
 
 def test_evento_valido_devuelve_copia():
+    """Un evento correcto se devuelve como un dict nuevo con el mismo contenido."""
     resultado = validate(EVENTO, INVENTARIO)
     assert resultado == EVENTO
     assert resultado is not EVENTO
@@ -35,7 +38,29 @@ def test_evento_valido_devuelve_copia():
     {**EVENTO, "resource_id": "i-0abc12345"},              # recurso ajeno
     {**EVENTO, "event_type": "bucket.tags_missing"},       # tipo no encaja con node-01
     {**EVENTO, "occurred_at": "2026-10-22T18:00:00"},      # fecha sin zona UTC
+    {**EVENTO, "schema_version": True},                    # bool no es la versión 1
+    {**EVENTO, "schema_version": 1.0},                     # float no es entero
+    {**EVENTO, "simulate_failures": -1},                   # por debajo del rango
+    {**EVENTO, "event_type": ["instance.stopped"]},        # tipo no textual
 ])
 def test_evento_invalido_se_rechaza(evento):
+    """Cada incumplimiento del contrato produce ValidationError."""
     with pytest.raises(ValidationError):
         validate(evento, INVENTARIO)
+
+
+@pytest.mark.parametrize("fallas", [0, 5])
+def test_simulate_failures_limites_validos(fallas):
+    """Los dos extremos de simulate_failures están permitidos."""
+    evento = {**EVENTO, "simulate_failures": fallas}
+    assert validate(evento, INVENTARIO) == evento
+
+
+def test_validate_no_modifica_las_entradas():
+    """validate no altera el evento ni el inventario, aunque rechace."""
+    evento = {**EVENTO, "resource_id": "ajeno-01"}
+    evento_antes, inventario_antes = dict(evento), copy.deepcopy(INVENTARIO)
+    with pytest.raises(ValidationError):
+        validate(evento, INVENTARIO)
+    assert evento == evento_antes
+    assert INVENTARIO == inventario_antes

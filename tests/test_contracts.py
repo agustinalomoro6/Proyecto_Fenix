@@ -11,7 +11,6 @@ def test_identifier_contract():
         None si las validaciones cumplen su contrato.
     Raises:
         AssertionError: Si acepta un valor inválido.
-        NotImplementedError: Hasta que se complete I1-A.
     """
     assert identifier("grupo-01") == "grupo-01"  # No normaliza identidad.
     with pytest.raises(ValidationError):  # Bloquea rutas no autorizadas.
@@ -25,7 +24,6 @@ def test_ttl_contract():
         None si TTL queda entre 60 y 600 segundos.
     Raises:
         AssertionError: Si acepta un valor fuera de rango.
-        NotImplementedError: Hasta que se complete I1-B.
     """
     assert ttl_seconds("60") == 60  # Límite inferior permitido.
     assert ttl_seconds("600") == 600  # Límite superior permitido.
@@ -40,7 +38,6 @@ def test_utc_contract():
         None si se acepta Z y se rechaza una fecha sin zona.
     Raises:
         AssertionError: Si una fecha ingenua resulta válida.
-        NotImplementedError: Hasta que se complete I1-C.
     """
     assert utc_text("2026-10-22T18:00:00Z").utcoffset().total_seconds() == 0
     with pytest.raises(ValidationError):  # Sin zona no hay comparación segura.
